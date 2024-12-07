@@ -79,34 +79,45 @@ def get_git_info(repo_path):
 
 
 def main(directory):
+    # get sort order for 
+    repos = []
     for item in os.listdir(directory):
         repo_path = os.path.join(directory, item)
         if os.path.isdir(repo_path) and os.path.isdir(os.path.join(repo_path, '.git')):
-            info = get_git_info(repo_path)
-            repo_name = color_text(item, BLUE)
-            if info:
-                # Build concise status output with colors
-                # repo_name = color_text(item, BLUE)
-                branch = color_text(info['branch'], GREEN)
-                ahead_behind = ""
-                ahead_color = GREEN if info['ahead'] > 0 else RESET
-                behind_color = RED if info['behind'] > 0 else RESET
-                ahead_behind = (
-                    " "+color_text(f"+{info['ahead']}", ahead_color)+
-                    "/"+color_text(f"-{info['behind']}", behind_color)
-                )
+            try:
+                date = subprocess.check_output(['git', '-C', repo_path, 'log', '-1', '--format=%cd', '--date=iso'],text=True,stderr=subprocess.DEVNULL).strip()
+                repos.append((item, repo_path, date))
+            except subprocess.CalledProcessError:
+                continue
+    
+    repos.sort(key=lambda r: r[2], reverse=True)
 
-                staged = color_text(f"+{info['staged_count']}" if info['staged_count'] > 0 else "  ", YELLOW)
-                unstaged = color_text(f"?{info['unstaged_count']}" if info['unstaged_count'] > 0 else "  ", BLUE)
-                untracked = color_text(f"!{info['untracked_count']}" if info['untracked_count'] > 0 else "  ", RED)
+    for item, repo_path, _ in repos:
+        info = get_git_info(repo_path)
+        repo_name = color_text(item, BLUE)
+        if info:
+            # Build concise status output with colors
+            # repo_name = color_text(item, BLUE)
+            branch = color_text(info['branch'], GREEN)
+            ahead_behind = ""
+            ahead_color = GREEN if info['ahead'] > 0 else RESET
+            behind_color = RED if info['behind'] > 0 else RESET
+            ahead_behind = (
+                " "+color_text(f"+{info['ahead']}", ahead_color)+
+                "/"+color_text(f"-{info['behind']}", behind_color)
+            )
 
-                # Combine staged, unstaged, and untracked indicators
-                uncommitted = f" {staged}{unstaged}{untracked}"
+            staged = color_text(f"+{info['staged_count']}" if info['staged_count'] > 0 else "  ", YELLOW)
+            unstaged = color_text(f"?{info['unstaged_count']}" if info['unstaged_count'] > 0 else "  ", BLUE)
+            untracked = color_text(f"!{info['untracked_count']}" if info['untracked_count'] > 0 else "  ", RED)
 
-                # Combine and print
-                print(f"{repo_name:<32}: {branch:<16} {ahead_behind:<8} {uncommitted:<10} {info['last_commit']:<16}")
-            else:
-                print(f"{repo_name:<32}: No commits")
+            # Combine staged, unstaged, and untracked indicators
+            uncommitted = f" {staged}{unstaged}{untracked}"
+
+            # Combine and print
+            print(f"{repo_name:<40}: {branch:<30} {ahead_behind:<20} {uncommitted:<35} {info['last_commit']:<16}")
+        else:
+            print(f"{repo_name:<40}: No commits")
 
 
 if __name__ == "__main__":
