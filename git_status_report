@@ -1,0 +1,119 @@
+#!/usr/bin/python3
+
+import os
+import subprocess
+
+
+# ANSI color codes
+RESET = "\033[0m"
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+CYAN = "\033[36m"
+MAGENTA = "\033[35m"
+
+def color_text(text, color):
+    return f"{color}{text}{RESET}"
+
+
+def get_git_info(repo_path):
+    try:
+        # Get the current branch name
+        branch = subprocess.check_output(
+            ['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            text=True,
+            stderr=subprocess.DEVNULL
+        ).strip()
+
+        # Get ahead/behind information
+        upstream_status = subprocess.check_output(
+            ['git', '-C', repo_path, 'for-each-ref', '--format=%(upstream:track)', 'HEAD'],
+            text=True,
+            stderr=subprocess.DEVNULL
+        ).strip()
+
+        # Check for uncommitted changes
+        # uncommitted_changes = subprocess.check_output(
+        #     ['git', '-C', repo_path, 'status', '--porcelain'],
+        #     text=True
+        # )
+        # uncommitted_count = len(uncommitted_changes.splitlines())
+
+        # Check for staged, unstaged, and untracked changes
+        status_output = subprocess.check_output(
+            ['git', '-C', repo_path, 'status', '--porcelain=2'],
+            text=True
+        ).splitlines()
+
+        staged_count = sum(1 for line in status_output if line.startswith("1 "))
+        unstaged_count = sum(1 for line in status_output if line.startswith("2 "))
+        untracked_count = sum(1 for line in status_output if line.startswith("? "))
+
+        # Format ahead/behind
+        ahead, behind = 0, 0
+        if upstream_status.startswith('[ahead'):
+            parts = upstream_status.strip('[]').split(',')
+            for part in parts:
+                if 'ahead' in part:
+                    ahead = int(part.split()[1])
+                elif 'behind' in part:
+                    behind = int(part.split()[1])
+
+        last_commit = subprocess.check_output(
+            ['git', '-C', repo_path, 'log', '-1', '--format=%cd', '--date=iso'],
+            text=True
+        ).strip()
+
+        return {
+            'branch': branch,
+            'ahead': ahead,
+            'behind': behind,
+            'staged_count': staged_count,
+            'unstaged_count': unstaged_count,
+            'untracked_count': untracked_count,
+            'last_commit': last_commit
+        }
+    except subprocess.CalledProcessError:
+        return None
+
+
+def main(directory):
+    for item in os.listdir(directory):
+        repo_path = os.path.join(directory, item)
+        if os.path.isdir(repo_path) and os.path.isdir(os.path.join(repo_path, '.git')):
+            info = get_git_info(repo_path)
+            repo_name = color_text(item, BLUE)
+            if info:
+                # Build concise status output with colors
+                # repo_name = color_text(item, BLUE)
+                branch = color_text(info['branch'], GREEN)
+                ahead_behind = ""
+                ahead_color = GREEN if info['ahead'] > 0 else RESET
+                behind_color = RED if info['behind'] > 0 else RESET
+                ahead_behind = (
+                    " "+color_text(f"+{info['ahead']}", ahead_color)+
+                    "/"+color_text(f"-{info['behind']}", behind_color)
+                )
+
+                staged = color_text(f"+{info['staged_count']}" if info['staged_count'] > 0 else "  ", YELLOW)
+                unstaged = color_text(f"?{info['unstaged_count']}" if info['unstaged_count'] > 0 else "  ", BLUE)
+                untracked = color_text(f"!{info['untracked_count']}" if info['untracked_count'] > 0 else "  ", RED)
+
+                # Combine staged, unstaged, and untracked indicators
+                uncommitted = f" {staged}{unstaged}{untracked}"
+
+                # Combine and print
+                print(f"{repo_name:<32}: {branch:<16} {ahead_behind:<8} {uncommitted:<10} {info['last_commit']:<16}")
+            else:
+                print(f"{repo_name:<32}: No commits")
+
+
+if __name__ == "__main__":
+    directory = os.getcwd()  # Default to the current working directory
+    if len(os.sys.argv) > 1:
+        directory = os.sys.argv[1]
+    if os.path.isdir(directory):
+        main(directory)
+    else:
+        print(color_text("The provided directory does not exist.", RED))
